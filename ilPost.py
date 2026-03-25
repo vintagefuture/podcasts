@@ -3,6 +3,8 @@ from playwright.sync_api import Playwright, sync_playwright, expect
 from dotenv import load_dotenv
 import os
 import requests
+import time
+import subprocess
 
 load_dotenv()
 
@@ -57,7 +59,7 @@ def run(playwright: Playwright) -> None:
             lastMorning = f.read()
         if lastMorning == episode_url:
             print("Episode is not new, quitting...")
-            return None
+            return False
 
     print("New episode found!")
     with open("lastMorning.txt", "w") as f:
@@ -75,7 +77,25 @@ def run(playwright: Playwright) -> None:
     browser.close()
 
     print("Done!")
+    return True
 
 
-with sync_playwright() as playwright:
-    run(playwright)
+if __name__ == "__main__":
+    close_time = time.time() + 60 * 60  # 1 hour
+    while time.time() < close_time:
+        with sync_playwright() as playwright:
+            result = run(playwright)
+        if result:
+            print("New episode downloaded, sending notification...")
+            subprocess.run([
+                'curl',
+                '-u', 'nedo:rutles',
+                '-d', 'New episode of Morning is ready',
+                'https://ntfy.542646.xyz/newPodcast'
+            ], capture_output=True, text=True)
+            break
+        else:
+            print("No new episode found yet, trying again in 5 minutes...")
+            time.sleep(300)  # wait 5 minutes before retrying
+    else:
+        print("No new episode found after 1 hour, giving up.")
