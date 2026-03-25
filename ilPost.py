@@ -2,6 +2,7 @@ import re
 from playwright.sync_api import Playwright, sync_playwright, expect
 from dotenv import load_dotenv
 import os
+import requests
 
 load_dotenv()
 
@@ -35,20 +36,32 @@ def run(playwright: Playwright) -> None:
     page.get_by_role("button", name="Accedi").click()
 
     # Go to Morning page
-    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(2000)  # waits 2 seconds
     page.goto("https://www.ilpost.it/podcasts/morning")
 
     # Get most recent item
     episode_url = page.locator("[class^='_episode-item_'] a").first.get_attribute("href")
 
     page.goto(episode_url)
+    page.wait_for_timeout(2000)  # waits 2 seconds
 
-    audio_src = page.locator("audio").get_attribute("src")
+    episode_url = page.locator("audio").get_attribute("src")
+    print(episode_url)
+    
+    # Check if this episode has been downloaded already
+    if os.path.isfile("lastMorning.txt"):
+        with open("lastMorning.txt", "r") as f:
+            lastMorning = f.read()
+        if lastMorning == episode_url:
+            return None
 
-    # Use Playwright's own request context — same cookies, no need for requests library
-    response = page.request.get(audio_src)
-    with open("episode.mp3", "wb") as f:
-        f.write(response.body())
+    with open("lastMorning.txt", "w") as f:
+        f.write(episode_url)
+
+    response = requests.get(episode_url)
+    with open("Morning.mp3", "wb") as f:
+        f.write(response.content)
+
 
     # ---------------------
     context.close()
