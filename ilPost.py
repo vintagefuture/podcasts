@@ -1,6 +1,7 @@
 import re
 from playwright.sync_api import Playwright, sync_playwright, expect
 from dotenv import load_dotenv
+from datetime import datetime
 import os
 import requests
 import time
@@ -11,15 +12,21 @@ load_dotenv()
 username = os.getenv("ILPOST_USER")
 password = os.getenv("ILPOST_PASSWORD")
 
+def send_to_log(string):
+    print(f'[INFO] "{datetime.now()} {string}"')
 
-def run(playwright: Playwright) -> None:
+def error_to_log(string = None):
+    print(f'[ERROR] "{datetime.now()} {string} or {"An error occurred."}"')
+
+def run(playwright: Playwright) -> bool:
     browser = playwright.chromium.launch(headless=True)
     context = browser.new_context()
     page = context.new_page()
     page.goto("https://abbonati.ilpost.it/mio-account/")
-    
+
 
     # Close the cookies notice
+    send_to_log("Dismiss cookies window")
     cookie_btn = page.get_by_role("button", name="Accetta e chiudi")
     cookie_btn.wait_for(state="visible", timeout=10000)
     cookie_btn.click()
@@ -29,43 +36,53 @@ def run(playwright: Playwright) -> None:
     cookie_btn = page.get_by_role("button", name="Accetta e chiudi")
     cookie_btn.wait_for(state="visible", timeout=10000)
     cookie_btn.click()
+    send_to_log("Cookies window closed")
 
     # Login with email and password
-    print("Logging in with username and password...")
-    page.get_by_role("textbox", name="Indirizzo email").click()
-    page.get_by_role("textbox", name="Indirizzo email").fill(username)
-    page.get_by_role("button", name="Continua").click()
-    page.get_by_placeholder("Inserisci una password").fill(password)
-    page.get_by_role("button", name="Accedi").click()
+    try:
+        send_to_log("Logging in with username and password...")
+        page.get_by_role("textbox", name="Indirizzo email").click()
+        page.get_by_role("textbox", name="Indirizzo email").fill(username)
+        page.get_by_role("button", name="Continua").click()
+        page.get_by_placeholder("Inserisci una password").fill(password)
+        page.get_by_role("button", name="Accedi").click()
+    except:
+        error_to_log()
 
     # Go to Morning page
-    print("Browsing to Morning page...")
-    page.wait_for_timeout(2000)  # waits 2 seconds
-    page.goto("https://www.ilpost.it/podcasts/morning")
+    try:
+        send_to_log("Browsing to Morning page...")
+        page.wait_for_timeout(2000)  # waits 2 seconds
+        page.goto("https://www.ilpost.it/podcasts/morning")
+    except:
+        error_to_log()
 
     # Get most recent item
-    episode_url = page.locator("[class^='_episode-item_'] a").first.get_attribute("href")
-    print(f"Found most recent episode: {episode_url}")
+    try:
+        episode_url = page.locator("[class^='_episode-item_'] a").first.get_attribute("href")
+        send_to_log(f"Found most recent episode: {episode_url}")
+        page.goto(episode_url)
+        page.wait_for_timeout(2000)  # waits 2 seconds
 
-    page.goto(episode_url)
-    page.wait_for_timeout(2000)  # waits 2 seconds
+        episode_url = page.locator("audio").get_attribute("src")
+        send_to_log(f"Found mp3 url: {episode_url}")
+    except:
+        error_to_log("Error finding episode url, quitting...")
+        exit(1)
 
-    episode_url = page.locator("audio").get_attribute("src")
-    print(f"Found mp3 url: {episode_url}")
-    
     # Check if this episode has been downloaded already
     if os.path.isfile("lastMorning.txt"):
         with open("lastMorning.txt", "r") as f:
             lastMorning = f.read()
         if lastMorning == episode_url:
-            print("Episode is not new, quitting...")
+            send_to_log("Episode is not new, quitting...")
             return False
 
-    print("New episode found!")
+    send_to_log("New episode found!")
     with open("lastMorning.txt", "w") as f:
         f.write(episode_url)
 
-    print("Downloading episode...")
+    send_to_log("Downloading episode...")
     response = requests.get(episode_url)
     os.makedirs("podcasts", exist_ok=True)
     with open(os.path.join("podcasts", "Morning.mp3"), "wb") as f:
@@ -76,7 +93,7 @@ def run(playwright: Playwright) -> None:
     context.close()
     browser.close()
 
-    print("Done!")
+    send_to_log("Done!")
     return True
 
 
@@ -86,7 +103,7 @@ if __name__ == "__main__":
         with sync_playwright() as playwright:
             result = run(playwright)
         if result:
-            print("New episode downloaded, sending notification...")
+            send_to_log("New episode downloaded, sending notification...")
             subprocess.run([
                 'curl',
                 '-u', 'nedo:rutles',
@@ -95,7 +112,7 @@ if __name__ == "__main__":
             ], capture_output=True, text=True)
             break
         else:
-            print("No new episode found yet, trying again in 5 minutes...")
+            send_to_log("No new episode found yet, trying again in 5 minutes...")
             time.sleep(300)  # wait 5 minutes before retrying
     else:
-        print("No new episode found after 1 hour, giving up.")
+        send_to_log("No new episode found after 1 hour, giving up.")
