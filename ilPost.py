@@ -16,7 +16,7 @@ def send_to_log(string):
     print(f'[INFO] "{datetime.now()} {string}"')
 
 def error_to_log(string = None):
-    print(f'[ERROR] "{datetime.now()} {string} or {"An error occurred."}"')
+    print(f'[ERROR] "{datetime.now()} {string or "An error occurred."}"')
 
 def run(playwright: Playwright) -> bool:
     browser = playwright.chromium.launch(headless=True)
@@ -24,19 +24,24 @@ def run(playwright: Playwright) -> bool:
     page = context.new_page()
     page.goto("https://abbonati.ilpost.it/mio-account/")
 
+    print()
+    send_to_log("Starting up...")
 
     # Close the cookies notice
-    send_to_log("Dismiss cookies window")
-    cookie_btn = page.get_by_role("button", name="Accetta e chiudi")
-    cookie_btn.wait_for(state="visible", timeout=10000)
-    cookie_btn.click()
+    try:
+        send_to_log("Dismiss cookies window")
+        cookie_btn = page.get_by_role("button", name="Accetta e chiudi")
+        cookie_btn.wait_for(state="visible", timeout=10000)
+        cookie_btn.click()
 
-    page.wait_for_timeout(2000)  # waits 2 seconds
+        page.wait_for_timeout(2000)  # waits 2 seconds
 
-    cookie_btn = page.get_by_role("button", name="Accetta e chiudi")
-    cookie_btn.wait_for(state="visible", timeout=10000)
-    cookie_btn.click()
-    send_to_log("Cookies window closed")
+        cookie_btn = page.get_by_role("button", name="Accetta e chiudi")
+        cookie_btn.wait_for(state="visible", timeout=10000)
+        cookie_btn.click()
+        send_to_log("Cookies window closed")
+    except:
+        error_to_log()
 
     # Login with email and password
     try:
@@ -47,7 +52,8 @@ def run(playwright: Playwright) -> bool:
         page.get_by_placeholder("Inserisci una password").fill(password)
         page.get_by_role("button", name="Accedi").click()
     except:
-        error_to_log()
+        error_to_log("Couldn't log in.")
+        exit(1)
 
     # Go to Morning page
     try:
@@ -75,7 +81,7 @@ def run(playwright: Playwright) -> bool:
         with open("lastMorning.txt", "r") as f:
             lastMorning = f.read()
         if lastMorning == episode_url:
-            send_to_log("Episode is not new, quitting...")
+            send_to_log("This mp3 is not new")
             return False
 
     send_to_log("New episode found!")
